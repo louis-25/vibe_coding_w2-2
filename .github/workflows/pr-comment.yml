@@ -1,0 +1,54 @@
+name: PR Auto Comment
+
+on:
+  pull_request:
+    types: [opened, reopened]
+
+jobs:
+  comment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add PR Welcome Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.issue.number;
+            const author = context.payload.pull_request.user.login;
+            const title = context.payload.pull_request.title;
+            const body = context.payload.pull_request.body || '설명이 없습니다.';
+
+            const comment = `## 🎉 PR 생성을 환영합니다!
+
+            안녕하세요 @${author}님! PR을 생성해 주셔서 감사합니다.
+
+            ### 📋 PR 정보
+            - **제목**: ${title}
+            - **작성자**: @${author}
+            - **PR 번호**: #${prNumber}
+
+            ### ✅ 체크리스트
+            PR 머지 전에 다음 사항들을 확인해 주세요:
+
+            - [ ] 테스트 코드가 작성되었나요?
+            - [ ] 모든 테스트가 통과하나요?
+            - [ ] 코드 스타일 가이드를 준수했나요?
+            - [ ] 문서가 업데이트되었나요? (필요한 경우)
+            - [ ] Breaking changes가 있다면 명시했나요?
+
+            ### 🔍 자동 검사 항목
+            - 자동 테스트가 실행됩니다
+            - 코드 품질 검사가 진행됩니다
+            - 보안 스캔이 수행됩니다
+
+            ### 📝 리뷰 요청
+            리뷰어가 자동으로 할당됩니다. 리뷰 완료 후 머지가 가능합니다.
+
+            ---
+            *이 댓글은 자동으로 생성되었습니다. 🤖*`;
+
+            github.rest.issues.createComment({
+              issue_number: prNumber,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });

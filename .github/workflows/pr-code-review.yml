@@ -1,0 +1,179 @@
+name: PR Auto Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  code-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Auto Code Review
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.issue.number;
+
+            // PR 파일 변경 내용 가져오기
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+
+            const reviews = [];
+
+            for (const file of files) {
+              const filename = file.filename;
+              const patch = file.patch || '';
+              
+              // Python 파일에 대한 코드 리뷰
+              if (filename.endsWith('.py')) {
+                const lines = patch.split('\n');
+                let lineNumber = 0;
+                
+                for (let i = 0; i < lines.length; i++) {
+                  const line = lines[i];
+                  
+                  // 추가된 라인만 검토
+                  if (line.startsWith('+') && !line.startsWith('+++')) {
+                    const code = line.substring(1).trim();
+                    lineNumber++;
+                    
+                    // 코드 리뷰 체크 항목들
+                    const suggestions = [];
+                    
+                    // 1. Import 문 체크
+                    if (code.includes('import *')) {
+                      suggestions.push('🚨 `import *` 사용을 피하고 필요한 모듈만 명시적으로 import하세요.');
+                    }
+                    
+                    // 2. 하드코딩된 값 체크
+                    if (code.includes('localhost') || code.includes('127.0.0.1')) {
+                      suggestions.push('💡 하드코딩된 호스트 주소 대신 환경변수나 설정 파일을 사용하는 것을 고려해보세요.');
+                    }
+                    
+                    // 3. 비밀번호나 키 하드코딩 체크
+                    if (code.toLowerCase().includes('password') || code.toLowerCase().includes('secret') || code.toLowerCase().includes('key')) {
+                      if (code.includes('=') && !code.includes('os.environ') && !code.includes('getenv')) {
+                        suggestions.push('🔐 비밀번호나 키는 환경변수로 관리하세요.');
+                      }
+                    }
+                    
+                    // 4. 긴 함수나 클래스 체크
+                    if (code.includes('def ') || code.includes('class ')) {
+                      suggestions.push('📏 함수나 클래스가 너무 길지 않은지 확인해보세요. (함수: 20줄 이하, 클래스: 200줄 이하 권장)');
+                    }
+                    
+                    // 5. Exception 처리 체크
+                    if (code.includes('except:') && !code.includes('except ')) {
+                      suggestions.push('⚠️ 구체적인 예외 타입을 명시하세요. `except:` 대신 `except SpecificException:`을 사용하세요.');
+                    }
+                    
+                    // 6. Print 문 체크 (로깅 권장)
+                    if (code.includes('print(') && !filename.includes('test_')) {
+                      suggestions.push('📝 `print()` 대신 `logging` 모듈 사용을 고려해보세요.');
+                    }
+                    
+                    // 7. TODO/FIXME 체크
+                    if (code.includes('TODO') || code.includes('FIXME')) {
+                      suggestions.push('📋 TODO/FIXME 항목을 이슈로 등록하는 것을 고려해보세요.');
+                    }
+                    
+                    // 8. 타입 힌트 체크
+                    if (code.includes('def ') && !code.includes('->') && !code.includes('test_')) {
+                      suggestions.push('🏷️ 타입 힌트 추가를 고려해보세요. (예: `def func(param: str) -> int:`)');
+                    }
+                    
+                    if (suggestions.length > 0) {
+                      reviews.push({
+                        path: filename,
+                        line: lineNumber,
+                        body: suggestions.join('\n\n')
+                      });
+                    }
+                  }
+                }
+              }
+              
+              // 설정 파일에 대한 리뷰
+              if (filename.includes('requirements.txt')) {
+                reviews.push({
+                  path: filename,
+                  body: '📦 의존성 버전을 고정하는 것을 고려해보세요. (예: `fastapi==0.68.0` 대신 `fastapi>=0.68.0,<0.70.0`)'
+                });
+              }
+              
+              // GitHub Actions 워크플로우 파일 리뷰
+              if (filename.includes('.github/workflows/')) {
+                reviews.push({
+                  path: filename,
+                  body: '🔧 워크플로우 파일 변경 시 보안과 성능을 고려해주세요. 민감한 정보는 secrets를 사용하세요.'
+                });
+              }
+            }
+
+            // 전체적인 PR 리뷰 댓글 생성
+            let overallReview = `## 🤖 자동 코드 리뷰 결과\n\n`;
+
+            if (reviews.length === 0) {
+              overallReview += `✅ **코드 리뷰 완료**: 자동 검사에서 특별한 문제를 발견하지 못했습니다.\n\n`;
+            } else {
+              overallReview += `📋 **총 ${reviews.length}개의 제안사항**이 있습니다.\n\n`;
+            }
+
+            // 파일별 통계
+            const fileStats = {
+              python: files.filter(f => f.filename.endsWith('.py')).length,
+              test: files.filter(f => f.filename.includes('test_')).length,
+              config: files.filter(f => f.filename.includes('.yml') || f.filename.includes('.yaml') || f.filename.includes('.json')).length,
+              docs: files.filter(f => f.filename.includes('.md')).length
+            };
+
+            overallReview += `### 📊 변경 파일 통계\n`;
+            overallReview += `- Python 파일: ${fileStats.python}개\n`;
+            overallReview += `- 테스트 파일: ${fileStats.test}개\n`;
+            overallReview += `- 설정 파일: ${fileStats.config}개\n`;
+            overallReview += `- 문서 파일: ${fileStats.docs}개\n\n`;
+
+            // 체크리스트
+            overallReview += `### ✅ 리뷰 체크리스트\n`;
+            overallReview += `- [ ] 코드가 프로젝트 스타일 가이드를 따르나요?\n`;
+            overallReview += `- [ ] 모든 함수와 클래스에 적절한 docstring이 있나요?\n`;
+            overallReview += `- [ ] 테스트 코드가 충분히 작성되었나요?\n`;
+            overallReview += `- [ ] 에러 처리가 적절히 되어 있나요?\n`;
+            overallReview += `- [ ] 보안 취약점은 없나요?\n`;
+            overallReview += `- [ ] 성능에 영향을 주는 변경사항은 없나요?\n\n`;
+
+            overallReview += `---\n*이 리뷰는 자동으로 생성되었습니다. 추가적인 수동 리뷰를 권장합니다.*`;
+
+            // PR에 전체 리뷰 댓글 추가
+            await github.rest.issues.createComment({
+              issue_number: prNumber,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: overallReview
+            });
+
+            // 개별 라인 리뷰 추가 (최대 10개까지)
+            const limitedReviews = reviews.slice(0, 10);
+
+            for (const review of limitedReviews) {
+              try {
+                await github.rest.pulls.createReviewComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: prNumber,
+                  body: review.body,
+                  path: review.path,
+                  line: review.line || 1,
+                  side: 'RIGHT'
+                });
+              } catch (error) {
+                console.log(`리뷰 댓글 추가 실패: ${error.message}`);
+              }
+            }

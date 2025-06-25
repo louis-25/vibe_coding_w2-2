@@ -1,0 +1,183 @@
+name: PR Auto Labeler
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Auto label PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.issue.number;
+            const title = context.payload.pull_request.title.toLowerCase();
+            const branchName = context.payload.pull_request.head.ref.toLowerCase();
+
+            // 기존 라벨 제거를 위한 현재 라벨 가져오기
+            const { data: currentLabels } = await github.rest.issues.listLabelsOnIssue({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber
+            });
+
+            // 파일 변경 내용 가져오기
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+
+            const labels = [];
+
+            // 브랜치명 기반 라벨링
+            if (branchName.includes('feature/')) {
+              labels.push('feature');
+            } else if (branchName.includes('bugfix/') || branchName.includes('fix/')) {
+              labels.push('bug');
+            } else if (branchName.includes('hotfix/')) {
+              labels.push('hotfix');
+            } else if (branchName.includes('refactor/')) {
+              labels.push('refactor');
+            } else if (branchName.includes('docs/')) {
+              labels.push('documentation');
+            }
+
+            // PR 제목 기반 라벨링
+            if (title.includes('feat') || title.includes('feature')) {
+              labels.push('feature');
+            }
+            if (title.includes('fix') || title.includes('bug')) {
+              labels.push('bug');
+            }
+            if (title.includes('doc') || title.includes('readme')) {
+              labels.push('documentation');
+            }
+            if (title.includes('test')) {
+              labels.push('testing');
+            }
+            if (title.includes('refactor')) {
+              labels.push('refactor');
+            }
+            if (title.includes('style')) {
+              labels.push('style');
+            }
+            if (title.includes('perf') || title.includes('performance')) {
+              labels.push('performance');
+            }
+
+            // 파일 변경 기반 라벨링
+            const backendFiles = files.filter(file => 
+              file.filename.startsWith('backend/') || 
+              file.filename.includes('api') ||
+              file.filename.includes('main.py')
+            );
+
+            const frontendFiles = files.filter(file => 
+              file.filename.startsWith('frontend/') ||
+              file.filename.includes('streamlit') ||
+              file.filename.includes('app.py')
+            );
+
+            const testFiles = files.filter(file => 
+              file.filename.startsWith('tests/') ||
+              file.filename.includes('test_')
+            );
+
+            const docFiles = files.filter(file => 
+              file.filename.includes('.md') ||
+              file.filename.includes('docs/') ||
+              file.filename.includes('README')
+            );
+
+            const configFiles = files.filter(file => 
+              file.filename.startsWith('.github/') ||
+              file.filename.includes('requirements') ||
+              file.filename.includes('.yml') ||
+              file.filename.includes('.yaml') ||
+              file.filename.includes('.json') ||
+              file.filename.includes('.toml')
+            );
+
+            if (backendFiles.length > 0) {
+              labels.push('backend');
+            }
+
+            if (frontendFiles.length > 0) {
+              labels.push('frontend');
+            }
+
+            if (testFiles.length > 0) {
+              labels.push('testing');
+            }
+
+            if (docFiles.length > 0) {
+              labels.push('documentation');
+            }
+
+            if (configFiles.length > 0) {
+              labels.push('configuration');
+            }
+
+            // 변경 크기에 따른 라벨링
+            const totalChanges = files.reduce((sum, file) => sum + file.changes, 0);
+
+            if (totalChanges < 10) {
+              labels.push('size/XS');
+            } else if (totalChanges < 30) {
+              labels.push('size/S');
+            } else if (totalChanges < 100) {
+              labels.push('size/M');
+            } else if (totalChanges < 500) {
+              labels.push('size/L');
+            } else {
+              labels.push('size/XL');
+            }
+
+            // 우선순위 라벨링 (제목 기반)
+            if (title.includes('urgent') || title.includes('critical') || title.includes('hotfix')) {
+              labels.push('priority: high');
+            } else if (title.includes('important')) {
+              labels.push('priority: medium');
+            } else {
+              labels.push('priority: low');
+            }
+
+            // 중복 제거
+            const uniqueLabels = [...new Set(labels)];
+
+            // 라벨 적용
+            if (uniqueLabels.length > 0) {
+              await github.rest.issues.setLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                labels: uniqueLabels
+              });
+              
+              // 라벨링 완료 댓글
+              const comment = `### 🏷️ 자동 라벨링 완료
+              
+              다음 라벨이 자동으로 적용되었습니다:
+              ${uniqueLabels.map(label => `\`${label}\``).join(', ')}
+              
+              **분석 결과**:
+              - 총 변경 라인 수: ${totalChanges}줄
+              - 백엔드 파일: ${backendFiles.length}개
+              - 프론트엔드 파일: ${frontendFiles.length}개
+              - 테스트 파일: ${testFiles.length}개
+              - 문서 파일: ${docFiles.length}개
+              - 설정 파일: ${configFiles.length}개
+              
+              ---
+              *라벨이 자동으로 적용되었습니다. 필요시 수동으로 수정 가능합니다.*`;
+              
+              await github.rest.issues.createComment({
+                issue_number: prNumber,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            }

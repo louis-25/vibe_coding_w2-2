@@ -1,0 +1,121 @@
+name: Issue Auto Comment
+
+on:
+  issues:
+    types: [opened, reopened]
+
+jobs:
+  comment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add Issue Welcome Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = context.issue.number;
+            const author = context.payload.issue.user.login;
+            const title = context.payload.issue.title;
+            const body = context.payload.issue.body || '설명이 없습니다.';
+            const labels = context.payload.issue.labels.map(label => label.name);
+
+            // 이슈 타입 분석
+            let issueType = '일반';
+            if (title.toLowerCase().includes('bug') || labels.includes('bug')) {
+              issueType = '버그';
+            } else if (title.toLowerCase().includes('feature') || labels.includes('feature')) {
+              issueType = '기능 요청';
+            } else if (title.toLowerCase().includes('question') || labels.includes('question')) {
+              issueType = '질문';
+            } else if (labels.includes('documentation')) {
+              issueType = '문서';
+            }
+
+            let comment = `## 📝 이슈 등록을 환영합니다!
+
+            안녕하세요 @${author}님! 이슈를 등록해 주셔서 감사합니다.
+
+            ### 📋 이슈 정보
+            - **제목**: ${title}
+            - **작성자**: @${author}
+            - **이슈 번호**: #${issueNumber}
+            - **타입**: ${issueType}
+
+            ### 🔍 다음 단계`;
+
+            if (issueType === '버그') {
+              comment += `
+            버그 신고를 해주셔서 감사합니다. 빠른 해결을 위해 다음 정보를 확인해 주세요:
+
+            - [ ] 버그 재현 단계가 명확히 기술되어 있나요?
+            - [ ] 예상 결과와 실제 결과가 명시되어 있나요?
+            - [ ] 환경 정보(OS, Python 버전, 브라우저 등)가 포함되어 있나요?
+            - [ ] 에러 메시지나 스크린샷이 첨부되어 있나요?
+
+            ### 🚨 긴급도 평가
+            - **높음**: 서비스 중단, 데이터 손실
+            - **보통**: 기능 오작동, 성능 문제
+            - **낮음**: UI 문제, 사소한 불편함`;
+
+            } else if (issueType === '기능 요청') {
+              comment += `
+            새로운 기능 제안을 해주셔서 감사합니다. 검토를 위해 다음 사항을 확인해 주세요:
+
+            - [ ] 기능의 필요성과 목적이 명확히 설명되어 있나요?
+            - [ ] 예상되는 사용자 시나리오가 포함되어 있나요?
+            - [ ] 기존 기능과의 연관성이 고려되었나요?
+            - [ ] 구현 방안에 대한 아이디어가 있나요?
+
+            ### 📊 우선순위 평가
+            - **높음**: 핵심 기능, 사용자 요구사항
+            - **보통**: 편의성 개선, 성능 향상
+            - **낮음**: 부가 기능, 미래 계획`;
+
+            } else if (issueType === '질문') {
+              comment += `
+            질문을 해주셔서 감사합니다. 빠른 답변을 위해 다음을 확인해 주세요:
+
+            - [ ] 질문이 구체적이고 명확한가요?
+            - [ ] 관련 코드나 설정이 포함되어 있나요?
+            - [ ] 시도해본 해결 방법이 있다면 명시되어 있나요?
+            - [ ] 문서를 먼저 확인해보셨나요?
+
+            ### 📚 도움이 될 수 있는 리소스
+            - [프로젝트 README](../README.md)
+            - [API 문서](../docs/)
+            - [기존 이슈 검색](../issues?q=is%3Aissue)`;
+
+            } else {
+              comment += `
+            이슈를 등록해 주셔서 감사합니다. 담당자가 확인 후 적절한 라벨과 담당자를 할당할 예정입니다.
+
+            - [ ] 이슈 내용이 명확하고 구체적인가요?
+            - [ ] 관련 파일이나 코드가 명시되어 있나요?
+            - [ ] 추가 정보가 필요한 경우 제공 가능한가요?`;
+            }
+
+            comment += `
+
+            ### 🏷️ 자동 라벨링
+            이슈가 자동으로 분석되어 적절한 라벨이 할당됩니다.
+
+            ### 👥 담당자 할당
+            프로젝트 관리자가 적절한 담당자를 할당할 예정입니다.
+
+            ### ⏱️ 예상 응답 시간
+            - **버그**: 24시간 이내
+            - **기능 요청**: 3-5일 이내
+            - **질문**: 12시간 이내
+            - **문서**: 2-3일 이내
+
+            ### 📞 추가 지원
+            더 자세한 도움이 필요하시면 언제든 댓글로 문의해 주세요.
+
+            ---
+            *이 댓글은 자동으로 생성되었습니다. 🤖*`;
+
+            await github.rest.issues.createComment({
+              issue_number: issueNumber,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });

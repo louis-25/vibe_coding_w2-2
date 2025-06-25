@@ -1,0 +1,219 @@
+name: Issue Auto Labeler
+
+on:
+  issues:
+    types: [opened, reopened, edited]
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Auto label issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = context.issue.number;
+            const title = context.payload.issue.title.toLowerCase();
+            const body = (context.payload.issue.body || '').toLowerCase();
+            const author = context.payload.issue.user.login;
+
+            const labels = [];
+
+            // 1. 이슈 타입별 라벨링
+            if (title.includes('bug') || title.includes('error') || title.includes('broken') ||
+                title.includes('fail') || body.includes('bug') || body.includes('error')) {
+              labels.push('bug');
+            }
+
+            if (title.includes('feature') || title.includes('enhancement') || title.includes('improvement') ||
+                title.includes('add') || body.includes('feature') || body.includes('enhancement')) {
+              labels.push('feature');
+            }
+
+            if (title.includes('question') || title.includes('help') || title.includes('how') ||
+                title.includes('?') || body.includes('question') || body.includes('help')) {
+              labels.push('question');
+            }
+
+            if (title.includes('doc') || title.includes('readme') || title.includes('document') ||
+                body.includes('documentation') || body.includes('readme')) {
+              labels.push('documentation');
+            }
+
+            // 2. 우선순위 라벨링
+            if (title.includes('urgent') || title.includes('critical') || title.includes('hotfix') ||
+                title.includes('asap') || body.includes('urgent') || body.includes('critical')) {
+              labels.push('priority: high');
+            } else if (title.includes('important') || title.includes('soon') ||
+                       body.includes('important') || body.includes('soon')) {
+              labels.push('priority: medium');
+            } else {
+              labels.push('priority: low');
+            }
+
+            // 3. 컴포넌트별 라벨링
+            if (title.includes('backend') || title.includes('api') || title.includes('server') ||
+                title.includes('fastapi') || body.includes('backend') || body.includes('api')) {
+              labels.push('backend');
+            }
+
+            if (title.includes('frontend') || title.includes('ui') || title.includes('streamlit') ||
+                title.includes('interface') || body.includes('frontend') || body.includes('streamlit')) {
+              labels.push('frontend');
+            }
+
+            if (title.includes('test') || title.includes('testing') || title.includes('pytest') ||
+                body.includes('test') || body.includes('testing')) {
+              labels.push('testing');
+            }
+
+            if (title.includes('config') || title.includes('setup') || title.includes('install') ||
+                title.includes('deploy') || body.includes('configuration') || body.includes('deployment')) {
+              labels.push('configuration');
+            }
+
+            if (title.includes('database') || title.includes('db') || title.includes('sql') ||
+                body.includes('database') || body.includes('data')) {
+              labels.push('database');
+            }
+
+            if (title.includes('security') || title.includes('auth') || title.includes('permission') ||
+                body.includes('security') || body.includes('authentication')) {
+              labels.push('security');
+            }
+
+            if (title.includes('performance') || title.includes('slow') || title.includes('speed') ||
+                title.includes('optimization') || body.includes('performance') || body.includes('slow')) {
+              labels.push('performance');
+            }
+
+            // 4. 난이도별 라벨링
+            if (title.includes('simple') || title.includes('easy') || title.includes('minor') ||
+                body.includes('simple') || body.includes('easy')) {
+              labels.push('difficulty: easy');
+            } else if (title.includes('complex') || title.includes('hard') || title.includes('difficult') ||
+                       body.includes('complex') || body.includes('difficult')) {
+              labels.push('difficulty: hard');
+            } else {
+              labels.push('difficulty: medium');
+            }
+
+            // 5. 상태 라벨 (초기 상태)
+            labels.push('status: todo');
+
+            // 6. 특별 상황 라벨링
+            if (title.includes('duplicate') || body.includes('duplicate')) {
+              labels.push('duplicate');
+            }
+
+            if (title.includes('wontfix') || body.includes('wontfix')) {
+              labels.push('wontfix');
+            }
+
+            if (title.includes('good first issue') || title.includes('beginner') ||
+                body.includes('good first issue') || body.includes('beginner')) {
+              labels.push('good first issue');
+            }
+
+            if (title.includes('help wanted') || body.includes('help wanted')) {
+              labels.push('help wanted');
+            }
+
+            // 7. 플랫폼별 라벨링
+            if (title.includes('windows') || body.includes('windows')) {
+              labels.push('platform: windows');
+            }
+
+            if (title.includes('linux') || body.includes('linux')) {
+              labels.push('platform: linux');
+            }
+
+            if (title.includes('mac') || title.includes('macos') || body.includes('mac')) {
+              labels.push('platform: mac');
+            }
+
+            // 8. 언어별 라벨링
+            if (title.includes('python') || body.includes('python')) {
+              labels.push('language: python');
+            }
+
+            if (title.includes('javascript') || title.includes('js') || body.includes('javascript')) {
+              labels.push('language: javascript');
+            }
+
+            if (title.includes('html') || title.includes('css') || body.includes('html') || body.includes('css')) {
+              labels.push('language: web');
+            }
+
+            // 9. 이슈 크기 추정 (제목과 본문 길이 기반)
+            const totalLength = title.length + body.length;
+            if (totalLength < 100) {
+              labels.push('size: small');
+            } else if (totalLength < 500) {
+              labels.push('size: medium');
+            } else {
+              labels.push('size: large');
+            }
+
+            // 중복 제거
+            const uniqueLabels = [...new Set(labels)];
+
+            // 라벨 적용
+            if (uniqueLabels.length > 0) {
+              await github.rest.issues.setLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: uniqueLabels
+              });
+              
+              // 라벨링 완료 댓글
+              const comment = `### 🏷️ 자동 라벨링 완료
+              
+              다음 라벨이 자동으로 적용되었습니다:
+              ${uniqueLabels.map(label => `\`${label}\``).join(', ')}
+              
+              ### 📊 분석 결과
+              
+              **이슈 타입**: ${uniqueLabels.filter(l => ['bug', 'feature', 'question', 'documentation'].includes(l)).join(', ') || '일반'}
+              
+              **우선순위**: ${uniqueLabels.find(l => l.startsWith('priority:'))?.replace('priority: ', '') || '낮음'}
+              
+              **관련 컴포넌트**: ${uniqueLabels.filter(l => ['backend', 'frontend', 'testing', 'configuration', 'database', 'security'].includes(l)).join(', ') || '없음'}
+              
+              **예상 난이도**: ${uniqueLabels.find(l => l.startsWith('difficulty:'))?.replace('difficulty: ', '') || '보통'}
+              
+              **이슈 크기**: ${uniqueLabels.find(l => l.startsWith('size:'))?.replace('size: ', '') || '보통'}
+              
+              ### 🔄 라벨 설명
+              
+              **타입 라벨**:
+              - \`bug\`: 버그 신고 및 수정
+              - \`feature\`: 새로운 기능 요청
+              - \`question\`: 질문 및 도움 요청
+              - \`documentation\`: 문서 관련
+              
+              **우선순위 라벨**:
+              - \`priority: high\`: 긴급 처리 필요
+              - \`priority: medium\`: 중간 우선순위
+              - \`priority: low\`: 낮은 우선순위
+              
+              **상태 라벨**:
+              - \`status: todo\`: 할 일 (초기 상태)
+              - \`status: in-progress\`: 진행 중
+              - \`status: review\`: 검토 중
+              - \`status: done\`: 완료
+              
+              ### 📝 라벨 수정
+              자동으로 적용된 라벨이 부정확한 경우, 언제든 수동으로 수정하실 수 있습니다.
+              
+              ---
+              *라벨이 자동으로 적용되었습니다. 필요시 수동으로 수정 가능합니다.*`;
+              
+              await github.rest.issues.createComment({
+                issue_number: issueNumber,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            }

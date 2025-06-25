@@ -1,0 +1,174 @@
+name: Issue Auto Assigner
+
+on:
+  issues:
+    types: [opened, reopened]
+
+jobs:
+  assign:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Auto assign issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = context.issue.number;
+            const author = context.payload.issue.user.login;
+            const title = context.payload.issue.title.toLowerCase();
+            const body = (context.payload.issue.body || '').toLowerCase();
+            const labels = context.payload.issue.labels.map(label => label.name);
+
+            // 기본 담당자는 이슈 작성자
+            let assignees = [author];
+
+            // 이슈 타입별 담당자 할당 로직
+            let issueType = 'general';
+            let assignmentReason = [];
+
+            // 1. 버그 관련 이슈
+            if (title.includes('bug') || title.includes('error') || title.includes('issue') || 
+                body.includes('bug') || body.includes('error') || labels.includes('bug')) {
+              issueType = 'bug';
+              assignmentReason.push('🐛 버그 관련 이슈로 분류되었습니다.');
+            }
+
+            // 2. 기능 요청 관련 이슈
+            else if (title.includes('feature') || title.includes('enhancement') || title.includes('improvement') ||
+                     body.includes('feature') || body.includes('enhancement') || labels.includes('feature')) {
+              issueType = 'feature';
+              assignmentReason.push('✨ 기능 요청으로 분류되었습니다.');
+            }
+
+            // 3. 문서 관련 이슈
+            else if (title.includes('doc') || title.includes('readme') || title.includes('document') ||
+                     body.includes('documentation') || labels.includes('documentation')) {
+              issueType = 'documentation';
+              assignmentReason.push('📚 문서 관련 이슈로 분류되었습니다.');
+            }
+
+            // 4. 질문 관련 이슈
+            else if (title.includes('question') || title.includes('help') || title.includes('how') ||
+                     body.includes('question') || body.includes('help') || labels.includes('question')) {
+              issueType = 'question';
+              assignmentReason.push('❓ 질문으로 분류되었습니다.');
+            }
+
+            // 5. 백엔드 관련 이슈
+            if (title.includes('backend') || title.includes('api') || title.includes('server') ||
+                title.includes('fastapi') || body.includes('backend') || body.includes('api')) {
+              assignmentReason.push('🔧 백엔드 관련 내용이 포함되어 있습니다.');
+            }
+
+            // 6. 프론트엔드 관련 이슈
+            if (title.includes('frontend') || title.includes('ui') || title.includes('streamlit') ||
+                title.includes('interface') || body.includes('frontend') || body.includes('streamlit')) {
+              assignmentReason.push('🎨 프론트엔드 관련 내용이 포함되어 있습니다.');
+            }
+
+            // 7. 테스트 관련 이슈
+            if (title.includes('test') || title.includes('testing') || body.includes('test')) {
+              assignmentReason.push('🧪 테스트 관련 내용이 포함되어 있습니다.');
+            }
+
+            // 8. 설정/배포 관련 이슈
+            if (title.includes('config') || title.includes('deploy') || title.includes('docker') ||
+                title.includes('github') || body.includes('configuration') || body.includes('deployment')) {
+              assignmentReason.push('⚙️ 설정 또는 배포 관련 내용이 포함되어 있습니다.');
+            }
+
+            // 우선순위 결정
+            let priority = 'low';
+            if (title.includes('urgent') || title.includes('critical') || title.includes('hotfix') ||
+                body.includes('urgent') || body.includes('critical')) {
+              priority = 'high';
+              assignmentReason.push('🚨 긴급 이슈로 분류되었습니다.');
+            } else if (title.includes('important') || body.includes('important')) {
+              priority = 'medium';
+              assignmentReason.push('⚡ 중요 이슈로 분류되었습니다.');
+            }
+
+            // 이슈에 담당자 할당
+            await github.rest.issues.addAssignees({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              assignees: assignees
+            });
+
+            // 할당 완료 댓글 생성
+            let comment = `### 🎯 자동 할당 완료
+
+            **담당자**: ${assignees.map(a => `@${a}`).join(', ')}
+            **이슈 타입**: ${issueType}
+            **우선순위**: ${priority}
+
+            **할당 근거**:
+            ${assignmentReason.length > 0 ? assignmentReason.map(reason => `- ${reason}`).join('\n') : '- 기본 할당 (이슈 작성자)'}
+
+            ### 📋 처리 가이드라인`;
+
+            if (issueType === 'bug') {
+              comment += `
+
+            **버그 처리 절차**:
+            1. 🔍 버그 재현 시도
+            2. 🎯 원인 분석 및 파악
+            3. 🛠️ 수정 방안 검토
+            4. ✅ 테스트 및 검증
+            5. 🚀 배포 및 모니터링
+
+            **예상 처리 시간**: ${priority === 'high' ? '24시간 이내' : priority === 'medium' ? '3-5일' : '1주일 이내'}`;
+
+            } else if (issueType === 'feature') {
+              comment += `
+
+            **기능 요청 처리 절차**:
+            1. 📝 요구사항 분석
+            2. 🎨 설계 및 기획
+            3. 👥 팀 검토 및 승인
+            4. 💻 개발 및 구현
+            5. 🧪 테스트 및 검증
+
+            **예상 처리 시간**: ${priority === 'high' ? '1-2주' : priority === 'medium' ? '2-4주' : '1-2개월'}`;
+
+            } else if (issueType === 'question') {
+              comment += `
+
+            **질문 처리 절차**:
+            1. 🔍 질문 내용 파악
+            2. 📚 관련 문서 확인
+            3. 💡 해결 방안 제시
+            4. ✅ 추가 지원 여부 확인
+
+            **예상 응답 시간**: ${priority === 'high' ? '6시간 이내' : '24시간 이내'}`;
+
+            } else if (issueType === 'documentation') {
+              comment += `
+
+            **문서 처리 절차**:
+            1. 📖 현재 문서 상태 확인
+            2. ✏️ 수정/추가 내용 검토
+            3. 📝 문서 업데이트
+            4. 👀 검토 및 승인
+
+            **예상 처리 시간**: ${priority === 'high' ? '2-3일' : '1주일 이내'}`;
+            }
+
+            comment += `
+
+            ### 🔄 상태 업데이트
+            진행 상황에 따라 다음 라벨로 상태가 업데이트됩니다:
+            - \`status: todo\` → \`status: in-progress\` → \`status: review\` → \`status: done\`
+
+            ### 📞 추가 정보 필요시
+            더 자세한 정보가 필요하면 언제든 댓글로 요청해 주세요.
+
+            ---
+            *담당자가 자동으로 할당되었습니다. 필요시 수동으로 변경 가능합니다.*`;
+
+            await github.rest.issues.createComment({
+              issue_number: issueNumber,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
