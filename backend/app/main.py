@@ -38,7 +38,7 @@ async def test_endpoint():
     """테스트용 엔드포인트 - PR 테스트를 위해 추가"""
     return {
         "message": "PR 테스트용 엔드포인트입니다!",
-        "version": "1.0.0",
+        "versoin": "1.0.0",  # 의도적 오타: version -> versoin
         "features": [
             "자동 테스트",
             "자동 라벨링",
