@@ -39,6 +39,17 @@ def call_backend_api(message: str) -> str:
     except Exception as e:
         return f"예상치 못한 오류가 발생했습니다: {str(e)}"
 
+def test_backend_connection():
+    """백엔드 연결 테스트 함수 - PR 테스트용 추가"""
+    try:
+        response = requests.get("http://localhost:8000/test", timeout=5)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return {"error": f"서버 오류: {response.status_code}"}
+    except Exception as e:
+        return {"error": f"연결 실패: {str(e)}"}
+
 def display_response_with_stream(response: str):
     """응답을 스트리밍 방식으로 표시"""
     # 테스트 환경에서는 스트리밍 효과 생략
@@ -102,6 +113,17 @@ with st.sidebar:
     - "노트북 추천해줘"
     - "무선 이어폰 비교해줘"
     """)
+    
+    # PR 테스트용 백엔드 연결 테스트 버튼 추가
+    st.header("🔧 테스트 기능")
+    if st.button("백엔드 연결 테스트"):
+        with st.spinner("백엔드 연결을 테스트 중..."):
+            test_result = test_backend_connection()
+            if "error" in test_result:
+                st.error(f"❌ 연결 실패: {test_result['error']}")
+            else:
+                st.success("✅ 백엔드 연결 성공!")
+                st.json(test_result)
     
     if st.button("채팅 기록 삭제"):
         st.session_state.messages = []
